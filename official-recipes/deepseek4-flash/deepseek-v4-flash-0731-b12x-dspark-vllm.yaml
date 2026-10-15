@@ -3,8 +3,9 @@
 
 recipe_version: "2"
 model: deepseek-ai/DeepSeek-V4-Flash-0731
+model_revision: 7872f01b1d1fe23eabc4c98b48bffcef5a386062
 runtime: vllm
-container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly-b12x:latest
+container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly-b12x:20261001
 min_nodes: 2
 
 metadata:
@@ -49,6 +50,7 @@ command: |
   vllm serve {model} \
       --host {host} \
       --port {port} \
+      --revision {model_revision} \
       --trust-remote-code \
       --tensor-parallel-size {tensor_parallel} \
       --kv-cache-dtype {kv_cache_dtype} \
