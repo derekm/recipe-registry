@@ -1,7 +1,7 @@
 recipe_version: "2"
 min_sparkrun_version: "0.4.0"
 model: deepseek-ai/DeepSeek-V4.1-Flash
-model_revision: fb2764a5cf321eaa5070ca8f9e892818f477c16d
+model_revision: 5254448103b6254fc646dacbca1cbbf20e9216c1
 runtime: sglang
 container: littlecedar/dgx-spark-dsv41:canary-roce@sha256:4e5002ab58b5cca670e2624c6a0d0799642914f04487ea130c71e7f525fa9c05
 min_nodes: 4
