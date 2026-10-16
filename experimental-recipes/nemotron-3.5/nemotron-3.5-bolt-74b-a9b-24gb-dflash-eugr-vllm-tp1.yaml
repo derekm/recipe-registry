@@ -1,0 +1,68 @@
+recipe_version: "2"
+min_sparkrun_version: "0.4.0"
+model: nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB
+model_revision: c6cc2e8ffa353403213d6b9b18aaf8eb684d705a
+runtime: vllm
+# eugr's regular nightly (vLLM 0.32.0rc1.dev227, past the model card's
+# nightly), pinned by index digest. It carries LiLiCorr, the ModelOpt IQ2_XXS
+# path, b12x through FlashInfer and an instanttensor build patched for UMA.
+container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly:20261015@sha256:6d5afe0e7d904b8113512ebefc943d2b50ded6cc770dc65d749eab627adfb6cd
+max_nodes: 1
+
+metadata:
+  description: >-
+    Experimental Nemotron 3.5 Bolt 74B-A9B (24 GB packed: NVFP4 linears,
+    IQ2_XXS experts) on one DGX Spark: b12x linear/MoE, 256K context,
+    LiLiCorr DFlash k=7, hybrid prefix caching. Adapts NVIDIA's model-card
+    vLLM recipe on eugr's nightly image.
+  model_url: https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB
+  model_params: "74B"
+  kv_dtype: fp8
+
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 1
+  trust_remote_code: true
+  max_model_len: 262144
+  max_num_seqs: 10
+  max_num_batched_tokens: 4096
+  enable_chunked_prefill: true
+  # The image's b12x load format is gated to Flash Next; instanttensor is the
+  # fast loader here. The drafter keeps load_format auto.
+  load_format: instanttensor
+  kv_cache_dtype: fp8
+  linear_backend: b12x
+  moe_backend: b12x
+  attention_backend: FLASHINFER
+  mamba_backend: flashinfer
+  mamba_ssm_cache_dtype: bfloat16
+  mamba_cache_dtype: bfloat16
+  mamba_cache_mode: align
+  # Hybrid prefix caching, after eugr's recipe: match at 64-token boundaries
+  # and checkpoint Mamba state where speculative siblings resume.
+  block_size: 64
+  prefix_match_unit: 64
+  enable_mamba_shared_prefix_checkpoint: true
+  seed: 42
+  limit_mm_per_prompt: {video: 1, image: 1}
+  video_pruning_rate: 0.5
+  media_io_kwargs: {video: {fps: 2, num_frames: 256}}
+  enable_auto_tool_choice: true
+  tool_call_parser: qwen3_coder
+  # The parser ships in the model repo; the in-container snapshot path is
+  # rendered into the env below and expanded by the serve shell.
+  reasoning_parser_plugin: $NEMOTRON_REASONING_PARSER_PLUGIN
+  reasoning_parser: ultra_v3
+  speculative_config:
+    method: dflash
+    model: nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-LiLiCorr
+    revision: 4c6a5613b6d887194a3a5493e3a18a5b3930bb86
+    num_speculative_tokens: 7
+    rejection_sample_method: standard
+    attention_backend: FLASHINFER
+    draft_load_config: {load_format: auto}
+
+env:
+  VLLM_USE_V2_MODEL_RUNNER: "1"
+  NEMOTRON_REASONING_PARSER_PLUGIN: "{launch.model_path}/ultra_v3_reasoning_parser.py"

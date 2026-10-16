@@ -1,0 +1,2 @@
+# Version vLLM 77154ca6 pins for its b12x extra (setup.py: "b12x": ["b12x==1.5.1"]).
+b12x==1.5.1 --hash=sha256:8731e23571d8d45db26d78e7699ec0b23e7ba20b52487adf8c1063c8d8b53a3d
