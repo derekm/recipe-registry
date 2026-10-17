@@ -1,0 +1,129 @@
+# DeepSeek V4.1 Flash 1017, 2x DGX Spark using the published EXL3 pack.
+# The 1017 EXL3 checkpoint is tensor-layout compatible with the MiaAI-Lab
+# two-Spark runtime. Engram remains native and is fetched from the matching
+# 1017 checkpoint on each node's persistent local runtime cache.
+recipe_version: "2"
+min_sparkrun_version: "0.4.0"
+model: LibertAIDAI/DeepSeek-V4.1-Flash-1017-EXL3-2.9bpw
+model_revision: c178a01284fc5c0e859d8668cffaac81ca8f4042
+runtime: vllm
+container: ghcr.io/miaai-lab/deepseek-v4.1-flash-exl3-2x-dgx-sparks:2.9bpw
+min_nodes: 2
+max_nodes: 2
+cluster_only: true
+
+metadata:
+  description: >-
+    Experimental 2x DGX Spark TP2 serving recipe for DeepSeek-V4.1-Flash-1017.
+    Uses the published EXL3 2.9-bpw/mul1 checkpoint (196.3 GiB) and keeps the
+    matching 1017 Engram tables on node-local NVMe. Starts at 256K context,
+    two sequences, and a pinned 2.5 GiB KV pool. Based on MiaAI-Lab's validated
+    two-Spark EXL3 vLLM kit; registry packaging is not yet hardware-validated.
+  model_url: https://huggingface.co/LibertAIDAI/DeepSeek-V4.1-Flash-1017-EXL3-2.9bpw
+  model_params: "552B backbone + 196B Engram"
+  model_dtype: exl3-2.9bpw-mul1
+  kv_dtype: fp8_ds_mla
+  attributions:
+    - author: LibertAIDAI
+      contribution: 1017-specific EXL3 2.9-bpw quantized checkpoint.
+      url: https://huggingface.co/LibertAIDAI/DeepSeek-V4.1-Flash-1017-EXL3-2.9bpw
+    - author: MiaAI-Lab
+      contribution: Two-Spark vLLM/ExLlamaV3 runtime image and deployment design.
+      url: https://github.com/MiaAI-Lab/DeepSeek-v4.1-Flash-EXL3-2x-DGX-Sparks
+    - author: DeepSeek-AI
+      contribution: Base model and 1017 Engram tables.
+      url: https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017
+
+# The EXL3 checkpoint is the model distributed by sparkrun. Download only the
+# two large native Engram shards plus their config/index; do not fan out the
+# complete ~476 GiB BF16 source checkpoint to each node.
+# `local_dir` is on sparkrun's persistent, per-node runtime cache/NVMe.
+# HF Hub snapshot_download reuses complete files after the first run.
+env:
+  DSV41_ENGRAM_DIR: "{launch.runtime_cache_dir}/engram-v4.1-1017"
+  HF_HUB_ENABLE_HF_TRANSFER: "1"
+  EXL3_FUSED_MOE: "1"
+  EXL3_FAT_KERNEL: "0"
+  EXL3_FAT_GROUPED: "1"
+  EXL3_TEMP_ROWS_FUSED: "16"
+  TORCH_CUDA_ARCH_LIST: "12.1a"
+  FLASHINFER_CUDA_ARCH_LIST: "12.1a"
+  DSV41_IO_THREADS: "96"
+  DSV41_EXL3_SERIAL_STREAMS: "1"
+  VLLM_DISABLE_SHARED_EXPERTS_STREAM: "1"
+  DSV41_DROP_PAGE_CACHE: "1"
+  DSV41_INDEXER_PREFILL_FACTOR: "1"
+  VLLM_SPARSE_INDEXER_MAX_LOGITS_MB: "256"
+  VLLM_NO_USAGE_STATS: "1"
+  DO_NOT_TRACK: "1"
+  NCCL_CUMEM_ENABLE: "0"
+  NCCL_MAX_NCHANNELS: "8"
+  NCCL_PROTO: "^LL128"
+  NCCL_BUFFSIZE: "1048576"
+  PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+
+executor_config:
+  entrypoint: ""
+  shm_size: 32gb
+  cap_add:
+    - IPC_LOCK
+    - SYS_PTRACE
+  ulimit:
+    - memlock=-1:-1
+    - stack=67108864
+    - nofile=65535:65535
+
+defaults:
+  port: 8888
+  host: 0.0.0.0
+  served_model_name: DeepSeek-V4.1-Flash-1017-EXL3
+  tensor_parallel: 2
+  pipeline_parallel: 1
+  distributed_executor_backend: mp
+  quantization: exl3
+  load_format: instanttensor
+  max_model_len: 262144
+  max_num_seqs: 2
+  max_num_batched_tokens: 1536
+  gpu_memory_utilization: 0.88
+  kv_cache_memory_bytes: 2684354560
+  block_size: 64
+  num_speculative_tokens: 3
+  reasoning_effort: high
+
+pre_exec:
+  - >-
+    python3 -c 'import os; from huggingface_hub import snapshot_download;
+    snapshot_download(repo_id="deepseek-ai/DeepSeek-V4.1-Flash-1017",
+    revision="1bae0e1088993b9b82de08f59de5be5a34e42170",
+    allow_patterns=["model-00047-of-00048.safetensors",
+    "model-00048-of-00048.safetensors", "model.safetensors.index.json",
+    "config.json"], local_dir=os.environ["DSV41_ENGRAM_DIR"])'
+
+command: |
+  vllm serve {model} \
+    --revision {model_revision} \
+    --served-model-name {served_model_name} \
+    --host {host} \
+    --port {port} \
+    --tensor-parallel-size {tensor_parallel} \
+    --pipeline-parallel-size {pipeline_parallel} \
+    --distributed-executor-backend {distributed_executor_backend} \
+    --quantization {quantization} \
+    --load-format {load_format} \
+    --max-model-len {max_model_len} \
+    --max-num-seqs {max_num_seqs} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --kv-cache-memory-bytes {kv_cache_memory_bytes} \
+    --block-size {block_size} \
+    --tokenizer-mode deepseek_v41 \
+    --tool-call-parser deepseek_v41 \
+    --reasoning-parser deepseek_v41 \
+    --enable-auto-tool-choice \
+    --enable-prefix-caching \
+    --mm-encoder-tp-mode data \
+    --limit-mm-per-prompt '{"image":100}' \
+    --skip-mm-profiling \
+    --hf-overrides '{{"engram_table_dir":"{launch.runtime_cache_dir}/engram-v4.1-1017"}}' \
+    --speculative-config '{"method":"dspark","num_speculative_tokens":{num_speculative_tokens}}'
