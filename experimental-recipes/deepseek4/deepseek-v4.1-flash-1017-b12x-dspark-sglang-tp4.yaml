@@ -1,3 +1,4 @@
 min_sparkrun_version: "0.4.0"
 include: deepseek-v4.1-flash-b12x-dspark-sglang-tp4
 model: deepseek-ai/DeepSeek-V4.1-Flash-1017
+revision: 1bae0e1088993b9b82de08f59de5be5a34e42170
