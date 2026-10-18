@@ -3,25 +3,23 @@
 # two-Spark runtime. Engram remains native and is fetched from the matching
 # 1017 checkpoint on each node's persistent local runtime cache.
 recipe_version: "2"
-min_sparkrun_version: "0.4.0"
 model: LibertAIDAI/DeepSeek-V4.1-Flash-1017-EXL3-2.9bpw
 model_revision: c178a01284fc5c0e859d8668cffaac81ca8f4042
 runtime: vllm
 container: ghcr.io/miaai-lab/deepseek-v4.1-flash-exl3-2x-dgx-sparks:2.9bpw
 min_nodes: 2
 max_nodes: 2
-cluster_only: true
 
 metadata:
   description: >-
     Experimental 2x DGX Spark TP2 serving recipe for DeepSeek-V4.1-Flash-1017.
     Uses the published EXL3 2.9-bpw/mul1 checkpoint (196.3 GiB) and keeps the
     matching 1017 Engram tables on node-local NVMe. Starts at 256K context,
-    two sequences, and a pinned 2.5 GiB KV pool. Based on MiaAI-Lab's validated
-    two-Spark EXL3 vLLM kit; registry packaging is not yet hardware-validated.
+    two sequences, and a pinned 2.5 GiB KV pool. The 552B parameter count is
+    the backbone; the 196B Engram tables are separate. Based on MiaAI-Lab's
+    validated two-Spark EXL3 vLLM kit; registry packaging is not yet hardware-validated.
   model_url: https://huggingface.co/LibertAIDAI/DeepSeek-V4.1-Flash-1017-EXL3-2.9bpw
-  model_params: "552B backbone + 196B Engram"
-  model_dtype: exl3-2.9bpw-mul1
+  model_params: "552B"
   kv_dtype: fp8_ds_mla
   attributions:
     - author: LibertAIDAI
@@ -89,16 +87,8 @@ defaults:
   kv_cache_memory_bytes: 2684354560
   block_size: 64
   num_speculative_tokens: 3
-  reasoning_effort: high
-
-pre_exec:
-  - >-
-    python3 -c 'import os; from huggingface_hub import snapshot_download;
-    snapshot_download(repo_id="deepseek-ai/DeepSeek-V4.1-Flash-1017",
-    revision="1bae0e1088993b9b82de08f59de5be5a34e42170",
-    allow_patterns=["model-00047-of-00048.safetensors",
-    "model-00048-of-00048.safetensors", "model.safetensors.index.json",
-    "config.json"], local_dir=os.environ["DSV41_ENGRAM_DIR"])'
+mods:
+  - fetch-engram-v4.1-1017
 
 command: |
   vllm serve {model} \
@@ -125,5 +115,5 @@ command: |
     --mm-encoder-tp-mode data \
     --limit-mm-per-prompt '{"image":100}' \
     --skip-mm-profiling \
-    --hf-overrides '{{"engram_table_dir":"{launch.runtime_cache_dir}/engram-v4.1-1017"}}' \
+    --hf-overrides '{"engram_table_dir":"{launch.runtime_cache_dir}/engram-v4.1-1017"}' \
     --speculative-config '{"method":"dspark","num_speculative_tokens":{num_speculative_tokens}}'
